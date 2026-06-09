@@ -127,6 +127,9 @@ app.post('/api/cards', authenticateToken, async (req, res) => {
   const { title, templateId, data } = req.body;
   const userId = req.userId;
 
+  data.website = 'https://agroeco.ru/';
+  data.company = 'ГК АГРОЭКО';
+
   if (!title || !data) {
     return res.status(400).json({ error: 'Название и данные визитки обязательны' });
   }
@@ -171,7 +174,7 @@ app.get('/api/cards/:slug', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, title, data, views, user_id FROM business_cards WHERE slug = $1 AND is_active = true',
+      'SELECT id, title, data, views, user_id, template_id FROM business_cards WHERE slug = $1 AND is_active = true',
       [slug]
     );
 
@@ -182,7 +185,7 @@ app.get('/api/cards/:slug', async (req, res) => {
     await pool.query('UPDATE business_cards SET views = views + 1 WHERE slug = $1', [slug]);
 
     const updated = await pool.query(
-      'SELECT id, title, data, views, user_id FROM business_cards WHERE slug = $1',
+      'SELECT id, title, data, views, user_id, template_id FROM business_cards WHERE slug = $1',
       [slug]
     );
 
@@ -198,6 +201,11 @@ app.put('/api/cards/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { title, templateId, data, isActive } = req.body;
   const userId = req.userId;
+
+  if (data) {
+    delete data.website;
+    delete data.company;
+  }
 
   try {
     const card = await pool.query('SELECT id FROM business_cards WHERE id = $1 AND user_id = $2', [id, userId]);
@@ -379,12 +387,10 @@ app.get('/api/admin/cards', authenticateToken, isAdmin, async (req, res) => {
 
 // Получение всех шаблонов
 app.get('/api/admin/templates', authenticateToken, isAdmin, async (req, res) => {
-  console.log('[TEMPLATES] Запрос списка шаблонов');
   try {
-    const result = await pool.query('SELECT * FROM templates ORDER BY id');
+    const result = await pool.query('SELECT id, name, description, preview_url, data, layout_type, is_active, created_at, updated_at FROM templates ORDER BY id');
     res.json(result.rows);
   } catch (err) {
-    console.error('[TEMPLATES] Ошибка:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -392,14 +398,14 @@ app.get('/api/admin/templates', authenticateToken, isAdmin, async (req, res) => 
 // Получение активных шаблонов
 app.get('/api/templates', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, description, preview_url, data FROM templates WHERE is_active = true');
+    const result = await pool.query('SELECT id, name, description, preview_url, data, layout_type FROM templates WHERE is_active = true');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Создание щаблона
+// Создание шаблона
 app.post('/api/admin/templates', authenticateToken, isAdmin, async (req, res) => {
   const { name, description, preview_url, data } = req.body;
   console.log('[TEMPLATES] Создание шаблона:', name);
@@ -513,11 +519,10 @@ app.get('/uploads/:filename', (req, res) => {
   }
 });
 
-// Получение шаблона по ID
 app.get('/api/templates/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query('SELECT id, name, data FROM templates WHERE id = $1 AND is_active = true', [id]);
+    const result = await pool.query('SELECT id, name, layout_type, data FROM templates WHERE id = $1 AND is_active = true', [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Шаблон не найден' });
     }
@@ -530,13 +535,23 @@ app.get('/api/templates/:id', async (req, res) => {
 // Получение активных шаблонов
 app.get('/api/templates', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, description, preview_url, data FROM templates WHERE is_active = true');
+    const result = await pool.query('SELECT id, name, description, preview_url, data, layout_type FROM templates WHERE is_active = true');
     console.log('Шаблоны загружены:', result.rows.length);
     res.json(result.rows);
   } catch (err) {
     console.error('Ошибка загрузки шаблонов:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Загрузка превью шаблонов
+app.post('/api/upload/preview', authenticateToken, isAdmin, (req, res) => {
+  upload.single('preview')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message })
+    if (!req.file) return res.status(400).json({ error: 'Файл не загружен' })
+    const previewUrl = `http://localhost:3000/uploads/${req.file.filename}`
+    res.json({ previewUrl })
+  })
 });
 
 // Проверка работы приложения

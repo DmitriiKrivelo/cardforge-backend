@@ -7,8 +7,8 @@ const { authenticateToken, isAdmin } = require('./auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { findEmployeeByFullName } = require('./employeeService');
 
-// Настройка хранилища для файлов
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, 'uploads');
@@ -23,7 +23,6 @@ const storage = multer.diskStorage({
   }
 });
 
-// Фильтр для проверки типа файла
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -39,7 +38,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ 
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 const app = express();
@@ -50,7 +49,6 @@ const JWT_SECRET = 'cardforge-secret-key-change-me';
 app.use(cors());
 app.use(express.json());
 
-// Регистрация
 app.post('/api/register', async (req, res) => {
   const { email, password, name } = req.body;
 
@@ -86,7 +84,6 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// Логин
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -122,12 +119,11 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Создание визитки
 app.post('/api/cards', authenticateToken, async (req, res) => {
   const { title, templateId, data } = req.body;
   const userId = req.userId;
 
-  data.website = 'https://agroeco.ru/';
+  data.website = 'https://agroeco.taplink.ws/';
   data.company = 'ГК АГРОЭКО';
 
   if (!title || !data) {
@@ -152,7 +148,6 @@ app.post('/api/cards', authenticateToken, async (req, res) => {
   }
 });
 
-// Получение визиток пользователя
 app.get('/api/cards', authenticateToken, async (req, res) => {
   const userId = req.userId;
 
@@ -168,7 +163,6 @@ app.get('/api/cards', authenticateToken, async (req, res) => {
   }
 });
 
-// Получение визитки (публичная)
 app.get('/api/cards/:slug', async (req, res) => {
   const { slug } = req.params;
 
@@ -189,6 +183,12 @@ app.get('/api/cards/:slug', async (req, res) => {
       [slug]
     );
 
+    const cardId = updated.rows[0].id;
+    await pool.query(
+      'INSERT INTO card_views (card_id, user_id) VALUES ($1, $2)',
+      [cardId, req.userId || null]
+    );
+
     res.json(updated.rows[0]);
   } catch (err) {
     console.error(err);
@@ -196,7 +196,6 @@ app.get('/api/cards/:slug', async (req, res) => {
   }
 });
 
-// Редактирование визитки
 app.put('/api/cards/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { title, templateId, data, isActive } = req.body;
@@ -231,7 +230,6 @@ app.put('/api/cards/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Удаление визитки
 app.delete('/api/cards/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.userId;
@@ -248,7 +246,6 @@ app.delete('/api/cards/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// QR
 const QRCode = require('qrcode');
 
 app.get('/api/cards/:slug/qr', async (req, res) => {
@@ -272,7 +269,6 @@ app.get('/api/cards/:slug/qr', async (req, res) => {
   }
 });
 
-// Получение визитки дял редактирования
 app.get('/api/cards/id/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.userId;
@@ -294,7 +290,6 @@ app.get('/api/cards/id/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Статистика
 app.get('/api/admin/stats'/*, authenticateToken, isAdmin*/, async (req, res) => {
   try {
     const usersCount = await pool.query('SELECT COUNT(*) FROM users');
@@ -312,7 +307,6 @@ app.get('/api/admin/stats'/*, authenticateToken, isAdmin*/, async (req, res) => 
   }
 });
 
-// Список пользователей
 app.get('/api/admin/users', authenticateToken, isAdmin, async (req, res) => {
   console.log('=== ЗАПРОС /api/admin/users ===');
   console.log('req.userId:', req.userId);
@@ -327,7 +321,6 @@ app.get('/api/admin/users', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// Изменение роли
 app.put('/api/admin/users/:id/role', authenticateToken, isAdmin, async (req, res) => {
   const { id } = req.params;
   const { role } = req.body;
@@ -355,7 +348,6 @@ app.put('/api/admin/users/:id/role', authenticateToken, isAdmin, async (req, res
   }
 });
 
-// Удаление пользователя
 app.delete('/api/admin/users/:id', authenticateToken, isAdmin, async (req, res) => {
   const { id } = req.params;
 
@@ -368,7 +360,6 @@ app.delete('/api/admin/users/:id', authenticateToken, isAdmin, async (req, res) 
   }
 });
 
-// Список визиток
 app.get('/api/admin/cards', authenticateToken, isAdmin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -385,7 +376,6 @@ app.get('/api/admin/cards', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// Получение всех шаблонов
 app.get('/api/admin/templates', authenticateToken, isAdmin, async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, description, preview_url, data, layout_type, is_active, created_at, updated_at FROM templates ORDER BY id');
@@ -395,7 +385,6 @@ app.get('/api/admin/templates', authenticateToken, isAdmin, async (req, res) => 
   }
 });
 
-// Получение активных шаблонов
 app.get('/api/templates', async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, description, preview_url, data, layout_type FROM templates WHERE is_active = true');
@@ -405,7 +394,6 @@ app.get('/api/templates', async (req, res) => {
   }
 });
 
-// Создание шаблона
 app.post('/api/admin/templates', authenticateToken, isAdmin, async (req, res) => {
   const { name, description, preview_url, data } = req.body;
   console.log('[TEMPLATES] Создание шаблона:', name);
@@ -426,7 +414,6 @@ app.post('/api/admin/templates', authenticateToken, isAdmin, async (req, res) =>
   }
 });
 
-// Обновление шаблона
 app.put('/api/admin/templates/:id', authenticateToken, isAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, description, preview_url, data, is_active } = req.body;
@@ -456,7 +443,6 @@ app.put('/api/admin/templates/:id', authenticateToken, isAdmin, async (req, res)
   }
 });
 
-// Удаление шаблона
 app.delete('/api/admin/templates/:id', authenticateToken, isAdmin, async (req, res) => {
   const { id } = req.params;
   console.log('[TEMPLATES] Удаление шаблона:', id);
@@ -473,7 +459,6 @@ app.delete('/api/admin/templates/:id', authenticateToken, isAdmin, async (req, r
   }
 });
 
-// Получение информации о текущем пользователе
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   const userId = req.userId;
 
@@ -494,7 +479,6 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
-// Загрузка аватара
 app.post('/api/upload/avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) {
@@ -509,7 +493,6 @@ app.post('/api/upload/avatar', authenticateToken, upload.single('avatar'), async
   }
 });
 
-// Получение аватара
 app.get('/uploads/:filename', (req, res) => {
   const filepath = path.join(__dirname, 'uploads', req.params.filename);
   if (fs.existsSync(filepath)) {
@@ -532,7 +515,6 @@ app.get('/api/templates/:id', async (req, res) => {
   }
 });
 
-// Получение активных шаблонов
 app.get('/api/templates', async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, description, preview_url, data, layout_type FROM templates WHERE is_active = true');
@@ -544,7 +526,6 @@ app.get('/api/templates', async (req, res) => {
   }
 });
 
-// Загрузка превью шаблонов
 app.post('/api/upload/preview', authenticateToken, isAdmin, (req, res) => {
   upload.single('preview')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message })
@@ -554,7 +535,6 @@ app.post('/api/upload/preview', authenticateToken, isAdmin, (req, res) => {
   })
 });
 
-// Проверка работы приложения
 app.get('/health', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
@@ -568,6 +548,124 @@ app.get('/', (req, res) => {
   res.json({ message: 'CardForge backend is running!' });
 });
 
+app.get('/api/reports/data', authenticateToken, async (req, res) => {
+    const userId = req.userId;
+    const { cardIds, dateFrom, dateTo } = req.query;
+
+    let cardIdArray = [];
+    if (cardIds && cardIds !== 'all') {
+        cardIdArray = cardIds.split(',').map(Number);
+        const check = await pool.query('SELECT id FROM business_cards WHERE id = ANY($1) AND user_id = $2', [cardIdArray, userId]);
+        if (check.rows.length !== cardIdArray.length) {
+            return res.status(403).json({ error: 'Некоторые визитки не принадлежат вам' });
+        }
+    } else {
+        const cards = await pool.query('SELECT id FROM business_cards WHERE user_id = $1', [userId]);
+        cardIdArray = cards.rows.map(r => r.id);
+    }
+
+    if (cardIdArray.length === 0) return res.json([]);
+
+    let query = `
+      SELECT 
+          cv.card_id, 
+          bc.title AS card_title, 
+          u.email AS user_email,
+          cv.viewed_at
+      FROM card_views cv
+      JOIN business_cards bc ON cv.card_id = bc.id
+      JOIN users u ON bc.user_id = u.id
+      WHERE cv.card_id = ANY($1)
+    `;
+    const params = [cardIdArray];
+    let paramIndex = 2;
+    if (dateFrom) { query += ` AND cv.viewed_at >= $${paramIndex}`; params.push(dateFrom); paramIndex++; }
+    if (dateTo) { query += ` AND cv.viewed_at <= $${paramIndex}`; params.push(dateTo); paramIndex++; }
+    query += ' ORDER BY cv.viewed_at DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+});
+
+app.get('/api/admin/reports/data', authenticateToken, isAdmin, async (req, res) => {
+  const { cardIds, dateFrom, dateTo } = req.query;
+
+  console.log('Запрос отчёта (админ):', req.query);
+  try {
+    const { cardIds, dateFrom, dateTo } = req.query;
+    console.log('cardIds:', cardIds);
+    console.log('dateFrom:', dateFrom);
+    console.log('dateTo:', dateTo);
+
+    let cardIdArray = [];
+    if (cardIds && cardIds !== 'all') {
+      cardIdArray = cardIds.split(',').map(Number);
+  } else {
+      const cards = await pool.query('SELECT id FROM business_cards');
+      cardIdArray = cards.rows.map(r => r.id);
+  }
+
+    if (cardIdArray.length === 0) return res.json([]);
+
+    let query = `
+      SELECT 
+          cv.card_id, 
+          bc.title AS card_title, 
+          u.email AS user_email,
+          cv.viewed_at
+      FROM card_views cv
+      JOIN business_cards bc ON cv.card_id = bc.id
+      JOIN users u ON bc.user_id = u.id
+      WHERE cv.card_id = ANY($1)
+    `;
+    const params = [cardIdArray];
+    let paramIndex = 2;
+    if (dateFrom) { query += ` AND cv.viewed_at >= $${paramIndex}`; params.push(dateFrom); paramIndex++; }
+    if (dateTo) { query += ` AND cv.viewed_at <= $${paramIndex}`; params.push(dateTo); paramIndex++; }
+    query += ' ORDER BY cv.viewed_at DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+
+    } catch (err) {
+    console.error('Ошибка в /api/admin/reports/data:', err.message);
+    console.error(err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/user-stats', authenticateToken, isAdmin, async (req, res) => {
+  const { dateFrom, dateTo } = req.query;
+
+  try {
+    let query = `
+      SELECT 
+        u.id,
+        u.email,
+        u.name,
+        COUNT(bc.id) as card_count
+      FROM users u
+      LEFT JOIN business_cards bc ON u.id = bc.user_id
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    if (dateFrom && dateTo) {
+      query += ` AND bc.created_at BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
+      params.push(dateFrom, dateTo);
+      paramIndex += 2;
+    }
+
+    query += ` GROUP BY u.id, u.email, u.name ORDER BY card_count DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Ошибка получения статистики:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
